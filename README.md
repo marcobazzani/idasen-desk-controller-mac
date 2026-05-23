@@ -68,13 +68,15 @@ To open Preferences either right-click the status-bar icon and click `Preference
 
 ## Stand reminders
 
-Turn on the auto-stand schedule in Preferences to be reminded once per hour. If you'd rather decide for yourself when to move, toggle **Notify instead of moving automatically** — the app will then post a macOS notification at the scheduled time with `Stand` / `Sit` action buttons that move the desk when you tap them.
+Turn on the auto-stand schedule in Preferences to alternate sitting and standing on a fixed cycle: **Stand every** *N* minutes (sit duration), **Stand for** *M* minutes (stand duration), repeat. The status-bar icon turns blue while sitting and green while standing, and the popover shows a live countdown to the next transition.
+
+If a scheduled move would arrive while you're idle longer than the **Activity timeout**, the stand-up is skipped (the sit-down still fires). If you'd rather decide for yourself, toggle **Notify instead of moving the desk** — the app posts a macOS notification at each transition with `Stand` / `Sit` action buttons that move the desk when you tap them.
 
 
 ## Troubleshooting
 
 * Make sure no other phones / computers currently have one of the 'Desk Control' apps open and connected to your desk. If they do, simply quit that app and this Desk Controller app should work.
-* The auto-discovery heuristic looks for the word "desk" (case-insensitive) in the Bluetooth device name. If you renamed your desk to something that doesn't contain "desk", use the **Choose Bluetooth Device…** picker instead.
+* The auto-discovery heuristic looks for the word "desk" (case-insensitive) in the Bluetooth device name. If you renamed your desk to something that doesn't contain "desk", rename it back using the Linak "Desk Control" app.
 * `"Desk Controller.app" is damaged and can't be opened` — that's macOS's quarantine flag on an unsigned/CI-built download. Run the `xattr -dr com.apple.quarantine ...` command from the "Getting started" section.
 * If it's still not finding your desk, try resetting the desk:
     1. Lower your desk as low as it goes.
@@ -168,8 +170,7 @@ Releases are produced automatically: pushing a `v*` tag triggers a GitHub Action
 * Swift Concurrency / @MainActor modernization and UI redesign by [@MartinRybergLaude](https://github.com/MartinRybergLaude).
 * Position-offset bug fixes by [@ashumeet](https://github.com/ashumeet).
 * AppleScript improvements and notifications by [@akucharczyk](https://github.com/akucharczyk).
-* Manual Bluetooth device selection by [@varunyellina](https://github.com/varunyellina).
-* Unlimited custom presets by [@anant1811](https://github.com/anant1811).
+* macOS 13+ port, CI/Release workflows, sit/stand cycle redesign, status-bar phase icon, popover countdown, and About window by [@marcobazzani](https://github.com/marcobazzani).
 
 
 ## License
