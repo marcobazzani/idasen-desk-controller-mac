@@ -18,8 +18,11 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
     var viewController: ViewController?
 
-    /// Cached current phase for icon refresh de-duping.
-    private var lastIconPhase: AutoStand.Phase = .disabled
+    /// Phase the status-bar icon currently reflects, for refresh de-duping.
+    /// `nil` until the first render: seeding it with `.disabled` made the
+    /// launch-time `applyStatusBarIcon(.disabled)` (auto-stand off) a no-op,
+    /// leaving the menu-bar item blank.
+    private var lastIconPhase: AutoStand.Phase?
 
     func applicationDidFinishLaunching(_ aNotification: Notification) {
 
@@ -145,41 +148,51 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func applyStatusBarIcon(phase: AutoStand.Phase) {
         guard let button = statusBarItem?.button else { return }
-        guard phase != lastIconPhase else { return }
-        lastIconPhase = phase
+        // Skip redundant refreshes, but never while the button has no image.
+        guard phase != lastIconPhase || button.image == nil else { return }
 
         let baseConfig = NSImage.SymbolConfiguration(pointSize: 16, weight: .semibold)
         let glyphName = "arrow.up.and.down.circle"
 
+        let image: NSImage?
         switch phase {
         case .disabled:
             // Template glyph adopts the menubar foreground colour (light/dark
             // mode aware) when auto-stand is off.
-            let image = NSImage(systemSymbolName: glyphName,
-                                accessibilityDescription: "Desk Controller")?
+            image = NSImage(systemSymbolName: glyphName,
+                            accessibilityDescription: "Desk Controller")?
                 .withSymbolConfiguration(baseConfig)
             image?.isTemplate = true
-            button.image = image
-            button.contentTintColor = nil
         case .sitting:
             // Sit phase = blue.
             let palette = baseConfig.applying(.init(paletteColors: [.systemBlue]))
-            let image = NSImage(systemSymbolName: glyphName,
-                                accessibilityDescription: "Desk Controller — sitting")?
+            image = NSImage(systemSymbolName: glyphName,
+                            accessibilityDescription: "Desk Controller — sitting")?
                 .withSymbolConfiguration(palette)
             image?.isTemplate = false
-            button.image = image
-            button.contentTintColor = nil
         case .standing:
             // Stand phase = green.
             let palette = baseConfig.applying(.init(paletteColors: [.systemGreen]))
-            let image = NSImage(systemSymbolName: glyphName,
-                                accessibilityDescription: "Desk Controller — standing")?
+            image = NSImage(systemSymbolName: glyphName,
+                            accessibilityDescription: "Desk Controller — standing")?
                 .withSymbolConfiguration(palette)
             image?.isTemplate = false
-            button.image = image
-            button.contentTintColor = nil
         }
+
+        button.image = image ?? Self.fallbackStatusBarImage()
+        button.contentTintColor = nil
+        lastIconPhase = phase
+    }
+
+    /// The bundled template glyph (the app's original menu-bar icon), used if
+    /// the SF Symbol can't be resolved so the status item is never blank.
+    private static func fallbackStatusBarImage() -> NSImage? {
+        guard let image = NSImage(named: "StatusBarButtonImage")?.copy() as? NSImage else {
+            return nil
+        }
+        image.size = NSSize(width: 16, height: 16)
+        image.isTemplate = true
+        return image
     }
 
     @objc func showAbout() {
