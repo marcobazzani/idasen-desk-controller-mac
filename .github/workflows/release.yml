@@ -16,7 +16,7 @@ permissions:
 jobs:
   release:
     name: Build and publish .app
-    runs-on: macos-15
+    runs-on: macos-26
     steps:
       - uses: actions/checkout@v4
         with:
@@ -30,7 +30,7 @@ jobs:
           echo "version=${TAG#v}" >> "$GITHUB_OUTPUT"
 
       - name: Select Xcode
-        run: sudo xcode-select -s /Applications/Xcode_16.app
+        run: sudo xcode-select -s /Applications/Xcode_26.6.app
 
       - name: Build Release (arm64, ad-hoc signed)
         run: |
