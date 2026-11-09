@@ -85,6 +85,19 @@ If a scheduled move would arrive while you're idle longer than the **Activity ti
 
 ---
 
+## Waking the desk controller
+
+When the desk's controller has been idle long enough for its Bluetooth to go to sleep, the desk keeps showing the correct height but ignores movement commands. To fix this, the app now does the same as [linak-controller](https://github.com/rhyst/linak-controller):
+
+- on connect, it wakes the controller and claims the desk's "owner" user ID, and
+- it moves to sit/stand and AppleScript heights by sending a target height, which the desk drives to by itself.
+
+Tested on a Linak DPG1C (the IKEA IDÅSEN panel). If a desk doesn't respond to target heights, the app automatically falls back to the classic up/down commands for the rest of that connection. To troubleshoot, you can make the app use only the classic commands:
+
+```
+defaults write com.davidwilliames.Desk-Controller useReferenceInputDrive -bool false
+```
+
 ## Interacting with AppleScript
 
 You can talk to the app from AppleScript. Great for an [Alfred App](https://www.alfredapp.com) workflow, a Shortcut, or your own scripts.
