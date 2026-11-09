@@ -25,8 +25,34 @@ class DeskController: NSObject {
 
     var movingToPosition: Position? = nil {
         didSet {
+            if movingToPosition == nil {
+                cancelReferenceMove()
+            } else if shouldUseReferenceInput {
+                startReferenceMove()
+                return
+            }
             moveIfNeeded()
         }
+    }
+
+    // MARK: - Reference Input drive state
+
+    /// Interval between re-sent target heights; matches linak-controller.
+    let referenceMoveInterval: TimeInterval = 0.4
+    /// Safety cap on a single target move.
+    let referenceMoveTimeout: TimeInterval = 60
+
+    private var referenceMoveTimer: Timer?
+    private var referenceMoveTicks = 0
+    private var referenceMoveStartPosition: Float?
+    /// Set when the desk ignored a reference-input move; the rest of that
+    /// move (and following ones, until reconnect) uses the classic pulses.
+    private var referenceInputUnresponsive = false
+
+    private var shouldUseReferenceInput: Bool {
+        Preferences.shared.useReferenceInputDrive
+            && desk.referenceInputCharacteristic != nil
+            && !referenceInputUnresponsive
     }
 
     let desk: DeskPeripheral
@@ -140,6 +166,102 @@ class DeskController: NSObject {
         movingToPosition = .custom(height: height)
     }
 
+    // MARK: - Reference Input driver
+    //
+    // Newer Linak protocol (as used by rhyst/linak-controller): wake the
+    // controller, then write the target height to the Reference Input
+    // characteristic every ~400 ms. The desk ramps up/down and stops at the
+    // target by itself. If the desk doesn't move at all, fall back to the
+    // classic up/down pulses for the rest of the connection.
+
+    private func startReferenceMove() {
+        guard let target = movingToPosition else { return }
+        stopHoldTimer()
+        cancelReferenceMove()
+
+        let targetHeight = Preferences.shared.forPosition(target)
+        dbg("startReferenceMove: target=\(String(format: "%.1f", targetHeight))")
+
+        referenceMoveStartPosition = desk.position
+        referenceMoveTicks = 0
+        if let position = desk.position {
+            currentMovingDirection = targetHeight > position ? .up : (targetHeight < position ? .down : .none)
+        }
+
+        desk.wakeUp()
+        desk.sendStop()
+        desk.writeReferenceHeight(targetHeight)
+
+        let timer = Timer(timeInterval: referenceMoveInterval, repeats: true) { @Sendable [weak self] _ in
+            MainActor.assumeIsolated {
+                self?.referenceMoveTick(targetHeight: targetHeight)
+            }
+        }
+        timer.tolerance = 0.05
+        RunLoop.main.add(timer, forMode: .common)
+        referenceMoveTimer = timer
+    }
+
+    private func referenceMoveTick(targetHeight: Float) {
+        referenceMoveTicks += 1
+        let elapsed = Double(referenceMoveTicks) * referenceMoveInterval
+        guard let position = desk.position else {
+            // No height reading yet; keep asserting the target.
+            if elapsed > referenceMoveTimeout {
+                stopMoving()
+            } else {
+                desk.writeReferenceHeight(targetHeight)
+            }
+            return
+        }
+        let speed = desk.speed
+
+        // Arrived (don't rely solely on a final speed==0 notification).
+        if referenceMoveTicks >= 2 && abs(position - targetHeight) < 0.3 {
+            dbg("referenceMove: reached target at \(String(format: "%.1f", position))")
+            finishReferenceMove()
+            return
+        }
+
+        // Give the desk a couple of ticks to start moving before judging it.
+        if referenceMoveTicks >= 2 && speed == 0 {
+            let moved = abs(position - (referenceMoveStartPosition ?? position)) >= minMovementIncrements
+            let atTarget = abs(position - targetHeight) < 1
+            if !moved && !atTarget {
+                dbg("referenceMove: desk didn't move; falling back to classic commands")
+                referenceInputUnresponsive = true
+                cancelReferenceMove()
+                previousPosition = nil
+                moveIfNeeded()   // continue this move with the pulse driver
+                return
+            }
+            dbg("referenceMove: finished at \(String(format: "%.1f", position))")
+            finishReferenceMove()
+            return
+        }
+
+        if elapsed > referenceMoveTimeout {
+            dbg("referenceMove: timeout")
+            stopMoving()
+            return
+        }
+
+        desk.writeReferenceHeight(targetHeight)
+    }
+
+    private func cancelReferenceMove() {
+        referenceMoveTimer?.invalidate()
+        referenceMoveTimer = nil
+        referenceMoveStartPosition = nil
+    }
+
+    private func finishReferenceMove() {
+        cancelReferenceMove()
+        currentMovingDirection = .none
+        movingToPosition = nil
+        previousPosition = nil
+    }
+
     // MARK: - Manual hold-button driver
     //
     // Linak desks need a `move` command resent every ~500ms to keep moving. The
@@ -166,6 +288,10 @@ class DeskController: NSObject {
         // position notifications) doesn't fight us by issuing stopMoving when
         // it thinks we passed the target.
         movingToPosition = nil
+
+        if Preferences.shared.useReferenceInputDrive {
+            desk.wakeUp()
+        }
 
         sendHoldPacket(direction: direction)
 
@@ -197,6 +323,9 @@ class DeskController: NSObject {
     var previousPosition: Float?
 
     private func moveIfNeeded() {
+
+        // The reference-input driver owns the move while its timer runs.
+        guard referenceMoveTimer == nil else { return }
 
         guard let toPosition = movingToPosition, var position = desk.position else {
             if movingToPosition != nil {

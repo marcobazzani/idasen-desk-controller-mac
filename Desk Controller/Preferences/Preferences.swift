@@ -37,6 +37,21 @@ class Preferences {
 
     private let notifyInsteadOfAutoMoveKey = "notifyInsteadOfAutoMove"
 
+    private let useReferenceInputDriveKey = "useReferenceInputDrive"
+
+    /// Hidden troubleshooting setting (no UI). When on (the default), the app
+    /// wakes the controller and claims the "owner" user ID on connect, and
+    /// drives to saved positions by writing a target height to the Reference
+    /// Input characteristic, as rhyst/linak-controller does. This is what gets
+    /// a Linak DPG1C (IKEA IDÅSEN panel) moving again after its Bluetooth has
+    /// gone to sleep. It exists only so the app can be set to fall back to the
+    /// classic up/down commands only:
+    /// `defaults write com.davidwilliames.Desk-Controller useReferenceInputDrive -bool false`
+    var useReferenceInputDrive: Bool {
+        get { UserDefaults.standard.object(forKey: useReferenceInputDriveKey) as? Bool ?? true }
+        set { UserDefaults.standard.set(newValue, forKey: useReferenceInputDriveKey) }
+    }
+
     var standingPosition: Float {
         get { UserDefaults.standard.object(forKey: standingKey) as? Float ?? 110 }
         set { UserDefaults.standard.set(newValue, forKey: standingKey) }
