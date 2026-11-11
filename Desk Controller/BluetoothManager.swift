@@ -29,6 +29,10 @@ class BluetoothManager: NSObject {
     /// The peripheral that is fully connected (set in didConnect, cleared in didDisconnect)
     private(set) var connectedPeripheral: CBPeripheral?
 
+    /// The desk we last connected to. Kept after a disconnect so we can
+    /// reconnect to it; `connectedPeripheral` and `pendingPeripheral` are cleared.
+    private var knownPeripheral: CBPeripheral?
+
     override init() {
         super.init()
         startScanning()
@@ -41,12 +45,20 @@ class BluetoothManager: NSObject {
     }
 
     func reconnect() {
-        // Try connected peripheral first, then pending
-        let peripheral = connectedPeripheral ?? pendingPeripheral
-        guard let peripheral, peripheral.state == .disconnected else {
-            return
+        guard let central = centralManager, central.state == .poweredOn else { return }
+
+        // Try connected peripheral first, then pending, then the last desk we had.
+        if let peripheral = connectedPeripheral ?? pendingPeripheral ?? knownPeripheral,
+           peripheral.state == .disconnected {
+            pendingPeripheral = peripheral
+            central.connect(peripheral, options: nil)
         }
-        centralManager?.connect(peripheral, options: nil)
+
+        // Fallback: if we're still not connected, scan again so the desk can be
+        // rediscovered (scanning is stopped after the first connection).
+        if connectedPeripheral == nil && !central.isScanning {
+            central.scanForPeripherals(withServices: nil, options: nil)
+        }
     }
 }
 
@@ -130,6 +142,7 @@ extension BluetoothManager: CBCentralManagerDelegate {
             // Promote pending → connected
             connectedPeripheral = peripheral
             pendingPeripheral = nil
+            knownPeripheral = peripheral
             onConnectedPeripheralChange(peripheral)
         }
     }
@@ -145,6 +158,14 @@ extension BluetoothManager: CBCentralManagerDelegate {
             connectPeripheralRSSI = nil
 
             onConnectedPeripheralChange(nil)
+
+            // Queue a reconnect right away. CoreBluetooth connection requests
+            // don't time out: this completes as soon as the desk advertises
+            // again (e.g. when the Mac wakes up).
+            if central.state == .poweredOn {
+                pendingPeripheral = peripheral
+                central.connect(peripheral, options: nil)
+            }
         }
     }
 
@@ -156,6 +177,12 @@ extension BluetoothManager: CBCentralManagerDelegate {
             connectPeripheralRSSI = nil
 
             onConnectedPeripheralChange(nil)
+
+            // Don't retry this peripheral directly (a connection that fails
+            // immediately would loop); scan so the desk can be rediscovered.
+            if central.state == .poweredOn && !central.isScanning {
+                central.scanForPeripherals(withServices: nil, options: nil)
+            }
         }
     }
 
