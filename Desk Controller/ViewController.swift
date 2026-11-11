@@ -738,7 +738,7 @@ class ViewController: NSViewController {
     func reconnect() {
 
         if bluetoothManager.connectedPeripheral == nil {
-            bluetoothManager.startScanning()
+            bluetoothManager.reconnect()
         }
 
         if let position = controller?.desk.position {
